@@ -784,3 +784,9 @@ Base.similar(bc::Broadcast.Broadcasted{Broadcast.ArrayStyle{MyArray}}, ::Type{El
     s = StructArray{ComplexF64}((MyArray(rand(2,2)), MyArray(rand(2,2))))
     @test_throws MethodError s .+ s
 end
+
+@testset "OffsetArray zero" begin
+    s = StructArray{ComplexF64}((rand(2), rand(2)))
+    soff = OffsetArray(s, 0:1)
+    @test isa(zero(soff).parent, StructArray)
+end
