@@ -348,24 +348,63 @@ function Base.view(s::StructArray{T, N, C}, I...) where {T, N, C}
     StructArray{T}(map(v -> view(v, I...), components(s)))
 end
 
-Base.@propagate_inbounds function Base.setindex!(s::StructArray{<:Any, <:Any, <:Any, CartesianIndex{N}}, vals, I::Vararg{Int, N}) where {N}
+"""
+By default, this package behave just as `<:Base.AbstractArray` in terms of `convert`.
+It does not do any "structural" conversion.
+Exceptions include `NamedTuples`.
+"""
+struct Structural{T}
+    _::T
+end
+
+maybe_structural(x) = x
+
+# this exception needs to be removed to comply with `AbstractArray`
+maybe_structural(x::NamedTuple) = Structural(x)
+
+function Base.convert(T, vals::Structural)
+    # TODO more efficient
+    s = StructVector{T}(undef, 0)
+    foreachfield(push!, s, vals._)
+    only(s)
+end
+
+Base.@propagate_inbounds function Base.setindex!(s::StructArray{T, <:Any, <:Any, CartesianIndex{N}}, vals, I::Vararg{Int, N}) where {T, N}
+    setindex!(s, convert(T, maybe_structural(vals)), I...)
+end
+
+Base.@propagate_inbounds function Base.setindex!(s::StructArray{T, <:Any, <:Any, Int}, vals, I::Int) where {T}
+    setindex!(s, convert(T, maybe_structural(vals)), I)
+end
+
+Base.@propagate_inbounds function Base.setindex!(s::StructArray{T, <:Any, <:Any, CartesianIndex{N}}, vals::T, I::Vararg{Int, N}) where {T, N}
     @boundscheck checkbounds(s, I...)
     foreachfield((col, val) -> (@inbounds col[I...] = val), s, vals)
     s
 end
 
-Base.@propagate_inbounds function Base.setindex!(s::StructArray{<:Any, <:Any, <:Any, Int}, vals, I::Int)
+Base.@propagate_inbounds function Base.setindex!(s::StructArray{T, <:Any, <:Any, Int}, vals::T, I::Int) where {T}
     @boundscheck checkbounds(s, I)
     foreachfield((col, val) -> (@inbounds col[I] = val), s, vals)
     s
 end
 
-function Base.push!(s::StructVector, vals)
+function Base.push!(s::StructVector{T}, vals) where {T}
+    push!(s, convert(T, maybe_structural(vals)))
+end
+
+function Base.push!(s::StructVector{T}, vals::T) where T
     foreachfield(push!, s, vals)
     return s
 end
 
 function Base.append!(s::StructVector, vals::StructVector)
+    # TODO, more efficient implementation
+    foldl(push!, vals; init = s)
+    return s
+end
+
+function Base.append!(s::StructVector{T}, vals::StructVector{T}) where T
     foreachfield(append!, s, vals)
     return s
 end
